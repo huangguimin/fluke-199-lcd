@@ -75,11 +75,25 @@
 
 ## 编译和构建
 
-### 1. 安装 Raspberry Pi Pico SDK
+### 方法一：使用 VS Code 官方插件（推荐）
 
-确保已安装 Raspberry Pi Pico SDK。如果使用 VS Code 扩展，SDK 会自动配置。
+这是最简单的方式，适合初学者和日常开发。
 
-### 2. 配置 LCD 类型
+#### 1. 安装 VS Code 插件
+
+在 VS Code 中安装官方插件：
+- 打开 VS Code
+- 进入扩展市场（Ctrl+Shift+X 或 Cmd+Shift+X）
+- 搜索并安装 **"Raspberry Pi Pico"** 官方插件（由 Raspberry Pi 发布）
+
+#### 2. 配置项目
+
+插件安装后会自动：
+- 下载并配置 Raspberry Pi Pico SDK
+- 配置 CMake 和工具链
+- 设置项目构建环境
+
+#### 3. 配置 LCD 类型
 
 在 `lcd_config.h` 中配置要使用的 LCD 类型：
 
@@ -91,7 +105,42 @@
 // #define USE_ST75320_LCD 1  // 注释掉这行
 ```
 
-### 3. 编译项目
+#### 4. 编译和烧录
+
+- **编译**: 按 `F7` 或点击状态栏的构建按钮
+- **烧录**: 
+  - 按住 Pico 上的 BOOTSEL 按钮
+  - 连接 USB 到电脑
+  - 在 VS Code 中按 `F5` 或点击状态栏的烧录按钮
+  - 插件会自动将 `.uf2` 文件烧录到 Pico
+
+#### 5. 查看串口输出
+
+- 在 VS Code 底部状态栏点击串口监视器图标
+- 或使用插件提供的串口终端功能
+- 波特率：115200
+
+### 方法二：命令行编译（高级用户）
+
+适合熟悉命令行工具的用户。
+
+#### 1. 安装 Raspberry Pi Pico SDK
+
+确保已安装 Raspberry Pi Pico SDK。如果使用 VS Code 扩展，SDK 会自动配置。
+
+#### 2. 配置 LCD 类型
+
+在 `lcd_config.h` 中配置要使用的 LCD 类型：
+
+```c
+// 使用 ST75320 LCD（单色）
+#define USE_ST75320_LCD 1
+
+// 或使用 ST7789 LCD（彩色，默认）
+// #define USE_ST75320_LCD 1  // 注释掉这行
+```
+
+#### 3. 编译项目
 
 ```bash
 mkdir build
@@ -100,7 +149,7 @@ cmake ..
 make
 ```
 
-### 4. 烧录到 Pico
+#### 4. 烧录到 Pico
 
 将生成的 `lcd_converter.uf2` 文件拖拽到 Pico 的 USB 存储设备中，或使用 picotool：
 
