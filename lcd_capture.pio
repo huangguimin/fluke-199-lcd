@@ -1,0 +1,85 @@
+; =============================================================================
+; lcd_capture.pio
+; 1-bit DSTN LCD数据采样程序 - 简化单状态机版本
+;
+; 核心逻辑：
+; 1. 等待FRAME上升沿 - 新帧开始，立即开始采样
+; 2. 连续采样DATACLK - 在关键点检查FRAME状态
+; 3. FRAME下降沿 - 当前帧结束，准备下一帧
+; =============================================================================
+
+.program lcd_capture
+.origin 0
+
+public entry:
+; =============================================================================
+; 等待帧开始
+; =============================================================================
+wait_frame:
+    wait 1 gpio 2                 ; 等待FRAME上升沿(新帧脉冲开始)
+    irq 0                       ; 2 立即通知 CPU“帧开始”
+    ;wait 0 gpio 2                 ; 等待FRAME下升沿(新帧脉冲开始)
+    set x, 29                     ; 设置计数器为29 (第一轮30次)
+    jmp sample_line_1         ; 继续下一行
+; =============================================================================
+; 等待行开始并连续采样60个DATACLK
+; =============================================================================
+sample_continuous:
+    wait 1 gpio 3                 ; 等待LINECLK上升沿
+    wait 0 gpio 3                 ; 等待LINECLK下降沿 - 行开始信号
+    jmp pin wait_frame             ; 检查FRAME状态后跳转
+    set x, 29                     ; 设置计数器为29 (第一轮30次)
+
+sample_line_1:
+    wait 1 gpio 4                 ; 等待DATACLK上升沿
+    wait 0 gpio 4                 ; 等待DATACLK下降沿
+    in pins, 4                    ; 采样4个1-bit像素 (LCDAT0-3并行采集)
+    jmp x-- sample_line_1         ; 减计数器，如果不为0继续采样
+
+    set x, 29                     ; 设置计数器为29 (第二轮30次)
+sample_line_2:
+    wait 1 gpio 4                 ; 等待DATACLK上升沿
+    wait 0 gpio 4                 ; 等待DATACLK下降沿
+    in pins, 4                    ; 采样4个1-bit像素 (LCDAT0-3并行采集)
+    jmp x-- sample_line_2         ; 减计数器，如果不为0继续采样
+
+    jmp sample_continuous         ; 继续下一行
+
+% c-sdk {
+static inline void lcd_capture_program_init(PIO pio, uint sm, uint offset)
+{
+    const uint PIN_DATA  = 5;
+    const uint PIN_CLK   = 4;
+    const uint PIN_LINE  = 3;
+    const uint PIN_FRAME = 2;
+
+    // 初始化GPIO
+    for (int i = 0; i < 4; ++i) pio_gpio_init(pio, PIN_DATA + i);
+    pio_gpio_init(pio, PIN_CLK);
+    pio_gpio_init(pio, PIN_LINE);
+    pio_gpio_init(pio, PIN_FRAME);
+
+    // 下拉配置
+    gpio_set_pulls(PIN_FRAME, false, true);
+    gpio_set_pulls(PIN_LINE, false, true);
+    gpio_set_pulls(PIN_CLK, false, true);
+
+    // 输入模式
+    pio_sm_set_consecutive_pindirs(pio, sm, PIN_DATA, 4, false);
+    pio_sm_set_consecutive_pindirs(pio, sm, PIN_CLK,  1, false);
+    pio_sm_set_consecutive_pindirs(pio, sm, PIN_LINE, 1, false);
+    pio_sm_set_consecutive_pindirs(pio, sm, PIN_FRAME,1, false);
+
+    // 状态机配置
+    pio_sm_config c = lcd_capture_program_get_default_config(offset);
+    sm_config_set_in_pins(&c, PIN_DATA);
+    sm_config_set_in_shift(&c, true, true, 32);    // 自动推送
+    sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_RX);
+    sm_config_set_clkdiv(&c, 1);                   // 不分频，最高速度
+    sm_config_set_jmp_pin(&c, PIN_FRAME);          // FRAME用于跳转检测
+
+    pio_sm_init(pio, sm, offset, &c);
+    // 注意：不在这里启动状态机，让DMA先准备好
+    // pio_sm_set_enabled(pio, sm, true);
+}
+%}

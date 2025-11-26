@@ -1,0 +1,59 @@
+; PIO 程序：测量 PWM 占空比
+; 使用倒计数方式测量高低电平时间
+
+.program duty_cycle_measure
+
+.wrap_target
+    wait 0 pin 0        ; 等待低电平
+    wait 1 pin 0        ; 等待上升沿，开始测量
+
+    mov x, ~null        ; x = 0xFFFFFFFF (最大值)
+high_loop:
+    jmp pin, high_dec   ; 如果还是高电平，继续计数
+    jmp high_done       ; 否则高电平结束
+high_dec:
+    jmp x--, high_loop  ; x递减并循环
+
+high_done:
+    mov isr, x          ; 保存高电平结束时的x值
+    push noblock        ; 推送高电平计数
+
+    mov y, ~null        ; y = 0xFFFFFFFF
+low_loop:
+    jmp pin, low_done   ; 如果变高，低电平结束
+    jmp y--, low_loop   ; y递减并循环
+
+low_done:
+    mov isr, y          ; 保存低电平结束时的y值
+    push noblock        ; 推送低电平计数
+.wrap
+
+% c-sdk {
+static inline void duty_cycle_measure_program_init(PIO pio, uint sm, uint offset, uint pin) {
+    pio_sm_config c = pio_get_default_sm_config();
+
+    // 设置 wrap
+    sm_config_set_wrap(&c, offset, offset + duty_cycle_measure_program.length - 1);
+
+    // 设置 JMP pin (用于 jmp pin 指令)
+    sm_config_set_jmp_pin(&c, pin);
+
+    // 设置 IN pins 基地址 (用于 wait pin 指令)
+    sm_config_set_in_pins(&c, pin);
+
+    // 配置时钟分频（降低频率避免溢出）
+    sm_config_set_clkdiv(&c, 4.0f);
+
+    // 设置引脚方向为输入
+    pio_gpio_init(pio, pin);
+    pio_sm_set_consecutive_pindirs(pio, sm, pin, 1, false);
+
+    // 自动 push/pull 配置
+    sm_config_set_in_shift(&c, false, false, 32);
+    sm_config_set_out_shift(&c, true, false, 32);
+
+    // 应用配置并启动
+    pio_sm_init(pio, sm, offset, &c);
+    pio_sm_set_enabled(pio, sm, true);
+}
+%}
